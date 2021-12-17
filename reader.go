@@ -1464,7 +1464,6 @@ func (r *reader) read(ctx context.Context, offset int64, conn *Conn) (int64, err
 	deadline := time.Now().Add(safetyTimeout)
 	conn.SetReadDeadline(deadline)
 
-	msgCount := 0
 	for {
 		if now := time.Now(); deadline.Sub(now) < (safetyTimeout / 2) {
 			deadline = now.Add(safetyTimeout)
@@ -1472,15 +1471,9 @@ func (r *reader) read(ctx context.Context, offset int64, conn *Conn) (int64, err
 		}
 
 		if msg, err = batch.ReadMessage(); err != nil {
-			// if there is no new messages at the end of correct batch -
-			// then we need to increment next batch offset manually.
-			if err == io.EOF && msgCount == 0 {
-				batch.offset++
-			}
 			batch.Close()
 			break
 		}
-		msgCount++
 
 		n := int64(len(msg.Key) + len(msg.Value))
 		r.stats.messages.observe(1)
