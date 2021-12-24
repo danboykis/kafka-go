@@ -1698,8 +1698,10 @@ func TestReaderReadCompactedMessage(t *testing.T) {
 	for {
 		success := func() bool {
 			r := NewReader(ReaderConfig{
-				Brokers: []string{"localhost:9092"},
-				Topic:   topic,
+				Brokers:  []string{"localhost:9092"},
+				Topic:    topic,
+				MinBytes: 200,
+				MaxBytes: 200,
 			})
 			defer r.Close()
 
@@ -1719,6 +1721,9 @@ func TestReaderReadCompactedMessage(t *testing.T) {
 			}
 		}()
 		if success {
+			// XXX fake fail now
+			t.Log("succeeded actually")
+			t.FailNow()
 			return
 		}
 		select {
@@ -1744,14 +1749,46 @@ func writeMessagesForCompactionCheck(t *testing.T, topic string, msgs []Message)
 	require.NoError(t, err)
 }
 
+// XXX need to make a test that tries all variations while at the same
+// time also compacts down reliably to a test-able form
+
 // makeTestDuplicateSequence creates messages for compacted log testing
+//
+// All keys and values are 4 characters long to tightly control how many
+// messages are per log segment.
 func makeTestDuplicateSequence() []Message {
 	var msgs []Message
+	// `n` is an increasing counter so it is never compacted.
+	n := 0
+	// `i` determines how many compacted records to create
+	for i := 0; i < 5; i++ {
+		// `j` is how many times the current pattern repeats. We repeat because
+		// as long as we have a pattern that is slightly larger/smaller than
+		// the log segment size then if we repeat enough it will eventually
+		// try all configurations.
+		for j := 0; j < 30; j++ {
+			msgs = append(msgs, Message{
+				Key:   []byte(fmt.Sprintf("%04d", n)),
+				Value: []byte(fmt.Sprintf("%04d", n)),
+			})
+			n++
+
+			// This produces the duplicated messages to compact.
+			for k := 0; k < i; k++ {
+				msgs = append(msgs, Message{
+					Key:   []byte("dup_"),
+					Value: []byte("dup_"),
+				})
+			}
+		}
+	}
+
+	// "end markers" to force duplicate message outside of the last segment of
+	// the log so that they can all be compacted.
 	for i := 0; i < 10; i++ {
-		msgs = append(msgs, dups(strconv.Itoa(i+1), strconv.Itoa(i), 1, 2)...)
 		msgs = append(msgs, Message{
-			Key:   []byte("key-mid"),
-			Value: []byte("key-mid"),
+			Key:   []byte(fmt.Sprintf("e-%02d", i)),
+			Value: []byte(fmt.Sprintf("e-%02d", i)),
 		})
 	}
 	return msgs
@@ -1764,23 +1801,6 @@ func countKeys(msgs []Message) int {
 		m[string(msg.Key)] = struct{}{}
 	}
 	return len(m)
-}
-
-func dups(first, second string, firstCount, secondCount int) []Message {
-	res := make([]Message, firstCount+secondCount)
-	for i := 0; i < firstCount; i++ {
-		res[i] = Message{
-			Key:   []byte(first),
-			Value: []byte(first + "_" + strconv.Itoa(i)),
-		}
-	}
-	for i := 0; i < secondCount; i++ {
-		res[firstCount+i] = Message{
-			Key:   []byte(second),
-			Value: []byte(second + "_" + strconv.Itoa(i)),
-		}
-	}
-	return res
 }
 
 func createTopicWithCompaction(t *testing.T, topic string, partitions int) {
@@ -1811,7 +1831,7 @@ func createTopicWithCompaction(t *testing.T, topic string, partitions int) {
 			},
 			{
 				ConfigName:  "segment.bytes",
-				ConfigValue: "220",
+				ConfigValue: "200",
 			},
 		},
 	})

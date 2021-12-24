@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -227,9 +228,11 @@ func (batch *Batch) readMessage(
 		return
 	}
 
+	fmt.Printf("pre-offset %d requested %d\n", batch.offset, batch.conn.offset)
 	offset, timestamp, headers, err = batch.msgs.readMessage(batch.offset, key, val)
 	switch err {
 	case nil:
+		fmt.Printf("result: nil\n")
 		batch.offset = offset + 1
 	case errShortRead:
 		// As an "optimization" kafka truncates the returned response after
@@ -238,6 +241,7 @@ func (batch *Batch) readMessage(
 		err = batch.msgs.discard()
 		switch {
 		case err != nil:
+			fmt.Printf("result: short read err\n")
 			// Since io.EOF is used by the batch to indicate that there is are
 			// no more messages to consume, it is crucial that any io.EOF errors
 			// on the underlying connection are repackaged.  Otherwise, the
@@ -245,6 +249,7 @@ func (batch *Batch) readMessage(
 			// consumed or a batch whose connection is in an error state.
 			batch.err = dontExpectEOF(err)
 		case batch.msgs.remaining() == 0:
+			fmt.Printf("0 msg remaining\n")
 			// Log compaction can create batches with 0 unread messages.
 			//
 			// If the "next offset" reaches the "originally requested offset"
@@ -255,7 +260,12 @@ func (batch *Batch) readMessage(
 			// reading a message but since there were no messages to read we
 			// update it now instead.
 			if batch.offset == batch.conn.offset {
+				// XXX mayber what we need is to advance to the end of the batch
+				// instead of just 1.
+				//
+				// the read question though, is can we repro? should be.
 				batch.offset++
+				fmt.Printf("jumped offset\n")
 			}
 
 			// Because we use the adjusted deadline we could end up returning
@@ -269,6 +279,7 @@ func (batch *Batch) readMessage(
 			batch.err = err
 		}
 	default:
+		fmt.Printf("result: err\n")
 		// Since io.EOF is used by the batch to indicate that there is are
 		// no more messages to consume, it is crucial that any io.EOF errors
 		// on the underlying connection are repackaged.  Otherwise, the

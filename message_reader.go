@@ -238,7 +238,7 @@ func (r *messageSetReader) readMessageV1(min int64, key readBytesFunc, val readB
 	return
 }
 
-func (r *messageSetReader) readMessageV2(_ int64, key readBytesFunc, val readBytesFunc) (
+func (r *messageSetReader) readMessageV2(expectedOffset int64, key readBytesFunc, val readBytesFunc) (
 	offset int64, timestamp int64, headers []Header, err error) {
 	if err = r.readHeader(); err != nil {
 		return
@@ -302,6 +302,14 @@ func (r *messageSetReader) readMessageV2(_ int64, key readBytesFunc, val readByt
 	offset = r.header.firstOffset + offsetDelta
 	if err = r.runFunc(key); err != nil {
 		return
+	}
+	if offsetDelta > 1 {
+		fmt.Printf("offsetDelta high %d\n", offsetDelta)
+	}
+	if offset > expectedOffset {
+		fmt.Printf("X diff %d expectedOffset %d offset %d firstOffset %d offsetDelta %d lastOffsetDelta %d\n", offset-expectedOffset, expectedOffset, offset, r.header.firstOffset, offsetDelta, r.header.v2.lastOffsetDelta)
+	} else {
+		fmt.Printf("  diff %d expectedOffset %d offset %d firstOffset %d offsetDelta %d lastOffsetDelta %d\n", offset-expectedOffset, expectedOffset, offset, r.header.firstOffset, offsetDelta, r.header.v2.lastOffsetDelta)
 	}
 	if err = r.runFunc(val); err != nil {
 		return
