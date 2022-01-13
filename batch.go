@@ -256,6 +256,7 @@ func (batch *Batch) readMessage(
 			fmt.Printf("0 msg remaining\n")
 			// Log compaction can create batches with 0 unread messages.
 			//
+			// XXX CORRECTION: this is not 0 messages, but 0 bytes remaining
 			// If the "next offset" reaches the "originally requested offset"
 			// and we have 0 messages remaining, then there were 0 unread
 			// messages in the batch.
@@ -284,6 +285,10 @@ func (batch *Batch) readMessage(
 			batch.err = err
 
 			// XXX comment about compaction moves here
+			//
+			// XXX we need to make sure we're only doing this when we reach
+			// the "end" of a batch. And not because kafka truncated the message
+			// due to the limit on messages set by the client.
 			if batch.err == io.EOF {
 				fmt.Printf("got lastOffset %d\n", batch.lastOffset)
 				newOffset := batch.lastOffset + 1
