@@ -29,6 +29,8 @@ type Batch struct {
 	offset        int64
 	highWaterMark int64
 	err           error
+	// The last offset in the batch
+	lastOffset int64
 }
 
 // Throttle gives the throttling duration applied by the kafka server on the
@@ -229,11 +231,13 @@ func (batch *Batch) readMessage(
 	}
 
 	fmt.Printf("pre-offset %d requested %d\n", batch.offset, batch.conn.offset)
-	offset, timestamp, headers, err = batch.msgs.readMessage(batch.offset, key, val)
+	var lastOffset int64
+	offset, lastOffset, timestamp, headers, err = batch.msgs.readMessage(batch.offset, key, val)
 	switch err {
 	case nil:
 		fmt.Printf("result: nil\n")
 		batch.offset = offset + 1
+		batch.lastOffset = lastOffset
 	case errShortRead:
 		// As an "optimization" kafka truncates the returned response after
 		// producing MaxBytes, which could then cause the code to return
@@ -259,14 +263,15 @@ func (batch *Batch) readMessage(
 			// We normally set the batch offset to the "next" batch offset upon
 			// reading a message but since there were no messages to read we
 			// update it now instead.
-			if batch.offset == batch.conn.offset {
-				// XXX mayber what we need is to advance to the end of the batch
-				// instead of just 1.
-				//
-				// the read question though, is can we repro? should be.
-				batch.offset++
-				fmt.Printf("jumped offset\n")
-			}
+			//if batch.offset == batch.conn.offset {
+			//	// XXX mayber what we need is to advance to the end of the batch
+			//	// instead of just 1.
+			//	//
+			//	// the read question though, is can we repro? should be.
+			//	//batch.offset++
+			//	batch.offset = batch.msgs.header.firstOffset + int64(batch.msgs.header.v2.lastOffsetDelta) + 1
+			//	fmt.Printf("jumped offset\n")
+			//}
 
 			// Because we use the adjusted deadline we could end up returning
 			// before the actual deadline occurred. This is necessary otherwise
@@ -277,6 +282,16 @@ func (batch *Batch) readMessage(
 			// read deadline management.
 			err = checkTimeoutErr(batch.deadline)
 			batch.err = err
+
+			// XXX comment about compaction moves here
+			if batch.err == io.EOF {
+				fmt.Printf("got lastOffset %d\n", batch.lastOffset)
+				newOffset := batch.lastOffset + 1
+				if (newOffset - batch.offset) > 1 {
+					fmt.Printf("jumped offset\n")
+				}
+				batch.offset = newOffset
+			}
 		}
 	default:
 		fmt.Printf("result: err\n")

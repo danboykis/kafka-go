@@ -114,7 +114,7 @@ func (r *messageSetReader) discard() (err error) {
 }
 
 func (r *messageSetReader) readMessage(min int64, key readBytesFunc, val readBytesFunc) (
-	offset int64, timestamp int64, headers []Header, err error) {
+	offset int64, lastOffset int64, timestamp int64, headers []Header, err error) {
 
 	if r.empty {
 		err = RequestTimedOut
@@ -126,8 +126,10 @@ func (r *messageSetReader) readMessage(min int64, key readBytesFunc, val readByt
 	switch r.header.magic {
 	case 0, 1:
 		offset, timestamp, headers, err = r.readMessageV1(min, key, val)
+		// XXX technically not true, but works if we only use this at end of batch
+		lastOffset = offset
 	case 2:
-		offset, timestamp, headers, err = r.readMessageV2(min, key, val)
+		offset, lastOffset, timestamp, headers, err = r.readMessageV2(min, key, val)
 	default:
 		err = r.header.badMagic()
 	}
@@ -239,7 +241,7 @@ func (r *messageSetReader) readMessageV1(min int64, key readBytesFunc, val readB
 }
 
 func (r *messageSetReader) readMessageV2(expectedOffset int64, key readBytesFunc, val readBytesFunc) (
-	offset int64, timestamp int64, headers []Header, err error) {
+	offset int64, lastOffset int64, timestamp int64, headers []Header, err error) {
 	if err = r.readHeader(); err != nil {
 		return
 	}
@@ -303,13 +305,14 @@ func (r *messageSetReader) readMessageV2(expectedOffset int64, key readBytesFunc
 	if err = r.runFunc(key); err != nil {
 		return
 	}
+	lastOffset = r.header.firstOffset + int64(r.header.v2.lastOffsetDelta)
 	if offsetDelta > 1 {
 		fmt.Printf("offsetDelta high %d\n", offsetDelta)
 	}
 	if offset > expectedOffset {
-		fmt.Printf("X diff %d expectedOffset %d offset %d firstOffset %d offsetDelta %d lastOffsetDelta %d\n", offset-expectedOffset, expectedOffset, offset, r.header.firstOffset, offsetDelta, r.header.v2.lastOffsetDelta)
+		fmt.Printf("X diff %d expectedOffset %d offset %d firstOffset %d offsetDelta %d lastOffsetDelta %d lastOffset %d\n", offset-expectedOffset, expectedOffset, offset, r.header.firstOffset, offsetDelta, r.header.v2.lastOffsetDelta, lastOffset)
 	} else {
-		fmt.Printf("  diff %d expectedOffset %d offset %d firstOffset %d offsetDelta %d lastOffsetDelta %d\n", offset-expectedOffset, expectedOffset, offset, r.header.firstOffset, offsetDelta, r.header.v2.lastOffsetDelta)
+		fmt.Printf("  diff %d expectedOffset %d offset %d firstOffset %d offsetDelta %d lastOffsetDelta %d lastOffset %d\n", offset-expectedOffset, expectedOffset, offset, r.header.firstOffset, offsetDelta, r.header.v2.lastOffsetDelta, lastOffset)
 	}
 	if err = r.runFunc(val); err != nil {
 		return
