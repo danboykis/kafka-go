@@ -1740,7 +1740,7 @@ func writeMessagesForCompactionCheck(t *testing.T, topic string, msgs []Message)
 
 	wr := NewWriter(WriterConfig{
 		Brokers:   []string{"localhost:9092"},
-		BatchSize: 2,
+		BatchSize: 3,
 		Async:     false,
 		Topic:     topic,
 		Balancer:  &LeastBytes{},
