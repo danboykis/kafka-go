@@ -733,7 +733,7 @@ func (w *Writer) partitions(ctx context.Context, topic string) (int, error) {
 	// caching recent results (the kafka.Transport types does).
 	r, err := client.transport().RoundTrip(ctx, client.Addr, &metadataAPI.Request{
 		TopicNames:             []string{topic},
-		AllowAutoTopicCreation: true,
+		AllowAutoTopicCreation: false,
 	})
 	if err != nil {
 		return 0, err
@@ -941,7 +941,7 @@ func newBatchQueue(initialSize int) batchQueue {
 	bq := batchQueue{
 		queue: make([]*writeBatch, 0, initialSize),
 		mutex: &sync.Mutex{},
-		cond: &sync.Cond{},
+		cond:  &sync.Cond{},
 	}
 
 	bq.cond.L = bq.mutex
